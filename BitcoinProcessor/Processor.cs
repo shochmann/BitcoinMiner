@@ -23,6 +23,7 @@ namespace BitcoinProcessor
                     loopState.Stop();
                 }
             });
+
             return finalHeader;
         }
 

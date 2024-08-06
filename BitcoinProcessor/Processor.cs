@@ -11,22 +11,7 @@ namespace BitcoinProcessor
             var dummyNonce = "00000000";
             var nonceList = GetViableNonceList(headerMinusNonce + dummyNonce);
             var finalHeader = "";
-            //Parallel.ForEach(nonceList, (nonce, loopState) =>
-            //{
-            //    var header = headerMinusNonce + Utility.ReverseEndian(Utility.BytesToHex(BitConverter.GetBytes(nonce)));
-            //    var sha = SHA256.Create();
-            //    var headerBytes = sha.ComputeHash(sha.ComputeHash(Utility.HexToBytes(header)));
-            //    var hash = Utility.ReverseEndian(BitConverter.ToString(headerBytes).Replace("-", "").ToLower());
-
-            //    if (hash.StartsWith("000000000000000000"))
-            //    {
-            //        finalHeader = header;
-            //        loopState.Stop();
-            //    }
-            //});
-
             finalHeader = GpuProcessor.ProcessHeaderOnGpu(headerMinusNonce, nonceList);
-
             return finalHeader;
         }
 

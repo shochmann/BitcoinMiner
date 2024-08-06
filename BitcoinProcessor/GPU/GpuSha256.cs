@@ -3,6 +3,7 @@ using ILGPU.Runtime;
 using ILGPU.Runtime.OpenCL;
 using System.Reflection.PortableExecutable;
 using System.Text;
+using System.Security.Cryptography;
 
 namespace BitcoinProcessor.GPU
 {
@@ -164,51 +165,58 @@ namespace BitcoinProcessor.GPU
             }
         }
 
-        static void Kernel(Index1D index, ArrayView<uint> k, ArrayView<byte> data, ArrayView<byte> outdata)
+        static void Kernel(Index1D index, ArrayView<uint> k, ArrayView<byte> data, 
+            ArrayView<byte> secondData, ArrayView<byte> thirdData, 
+            ArrayView<byte> outdata)
         {
             var ctx = new GpuSha256();
+            ctx.Update(data.SubView(index * 80, 80), k);
+            ctx.Final(secondData.SubView(index * 32, 32), k);
 
-            ctx.Update(data, k);
-            var result1 = new ArrayView<byte>();
-            ctx.Final(result1, k);
+            var ctx2 = new GpuSha256();
+            ctx2.Update(secondData.SubView(index * 32, 32), k);
+            ctx2.Final(thirdData.SubView(index * 32, 32), k);
 
-            ctx.Update(result1, k);
-            ctx.Final(outdata, k);
+            for (int i = 0; i < 32; i++)
+            {
+                outdata[(index * 32) + i] = thirdData[(index * 32) + i];
+            }
         }
 
         public static void ProcessGpuSha256(Accelerator accelerator, 
             string headerMinusNonce, int startIndex, int endIndex)
         {
-            //var launcherDelegate = accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<uint>, ArrayView<byte>, ArrayView<byte>>(GpuSha256.Kernel);
-            //using var dK = accelerator.Allocate1D(K);
-            //using var dX = accelerator.Allocate1D(Utility.HexToBytes(header));
-            //using var dY = accelerator.Allocate1D<byte>(32);
-            //kernel(1, dK.View, dX.View, dY.View);
-            //launcherDelegate(10000, hMn.View, dK.View);
-            //accelerator.Synchronize();
-
-            var header = headerMinusNonce + Utility.ReverseEndian(Utility.BytesToHex(BitConverter.GetBytes(nonce)));
-            var kernel = accelerator
-                .LoadAutoGroupedStreamKernel<Index1D, ArrayView<uint>, ArrayView<byte>, ArrayView<byte>>(GpuSha256.Kernel);
-            using var dK = accelerator.Allocate1D(K);
-            using var dX = accelerator.Allocate1D(Utility.HexToBytes(header));
-            using var dY = accelerator.Allocate1D<byte>(32);
-            kernel(10000, dK.View, dX.View, dY.View);
-
-            Parallel.ForEach(NonceList, (nonce, loopState) =>
+            var maxParallel = 3;//NonceList.Length
+            var combinedHeadersArray = new byte[maxParallel * 80];
+            for(var x = 0; x < maxParallel; x++)
             {
-                
-                
-                
-                var hY = dY.GetAsArray1D();
+                var header = headerMinusNonce + Utility.ReverseEndian(Utility.BytesToHex(BitConverter.GetBytes(NonceList[x])));
+                var bytes = Utility.HexToBytes(header);
+                Buffer.BlockCopy(bytes, 0, combinedHeadersArray, x * 80, bytes.Length);
+            }
+            
+            var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, 
+                ArrayView<uint>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>,
+                ArrayView<byte>>(GpuSha256.Kernel);
+            using var dK = accelerator.Allocate1D(K);
+            using var data = accelerator.Allocate1D(combinedHeadersArray);
+            using var secondData = accelerator.Allocate1D<byte>(maxParallel * 32);
+            using var thirdData = accelerator.Allocate1D<byte>(maxParallel * 32);
+            using var output = accelerator.Allocate1D<byte>(maxParallel * 32);
+            kernel(maxParallel, dK.View, data.View, secondData.View, thirdData.View, output.View);
 
-                var hash = Utility.ReverseEndian(BitConverter.ToString(hY).Replace("-", "").ToLower());
+            var hY = output.GetAsArray1D();
+            for (var x = 0; x < maxParallel; x++)
+            {
+                var start = x * 32;
+                var end = (x * 32) + 32;
+                var hash = Utility.ReverseEndian(BitConverter.ToString(hY[start..end]).Replace("-", "").ToLower());
                 if (hash.StartsWith("000000000000000000"))
                 {
-                    ValidHeader = header;
-                    loopState.Stop();
+                    ValidHeader = headerMinusNonce + Utility.ReverseEndian(Utility.BytesToHex(BitConverter.GetBytes(NonceList[x])));
+                    break;
                 }
-            });
+            }
 
             CompletedGpus++;
         }

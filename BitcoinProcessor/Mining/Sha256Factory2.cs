@@ -110,8 +110,8 @@ namespace BitcoinProcessor.Mining
                 b = a;
                 a = T1 + T2;
 
-                if (t == 17 || t == 18)
-                {
+                //if (t == 17 || t == 18)
+                //{
                     var ar1 = new long[] { a, b, c, d, e, f, g, h, T1, T2,
                     H[0], H[1], H[2], H[3], H[4], H[5], H[6], H[7]};
                     var ar2 = new long[] { a, b, c, d, e, f, g, h, T1, T2,
@@ -129,7 +129,7 @@ namespace BitcoinProcessor.Mining
                         }
                     }
                     EList.AddRange(tempEList.Distinct());
-                }
+                //}
             }
 
             // 4. Compute the intermediate hash value H:

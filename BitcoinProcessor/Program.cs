@@ -1,4 +1,5 @@
 ﻿using BitcoinProcessor;
+using System.Reflection.PortableExecutable;
 using System.Text;
 
 var apiBase = "https://8nfjxs0s-7181.use.devtunnels.ms/bitcoin/";
@@ -11,7 +12,7 @@ try
 
     while(success == false)
     {
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 15; i++)
         {
             var request = new HttpRequestMessage(HttpMethod.Get,
             apiBase + "getNextHeader/" + i.ToString());
@@ -33,8 +34,15 @@ try
 }
 catch(Exception ex)
 {
+    using (StreamWriter writer = new StreamWriter("C:\\Testing\\" + DateTime.Now.ToString("yyyyMMddHHmmss") + "_Error.txt"))
+    {
+        writer.WriteLine(ex.Message + ex.StackTrace + ex.InnerException);
+    }
+
     var client = new HttpClient();
     var error = ex.Message + ex.StackTrace + ex.InnerException;
+
+    if (error == null) { error = "null error"; }
 
     var data = new StringContent("{ \"HeaderString\": \"" + error.Replace("\\","-") + "\" }", Encoding.UTF8, "application/json");
     var postResponse = client.PostAsync(apiBase + "postError", data).Result;

@@ -184,38 +184,52 @@ namespace BitcoinProcessor.GPU
         }
 
         public static void ProcessGpuSha256(Accelerator accelerator, 
-            string headerMinusNonce, int startIndex, int endIndex)
+            string headerMinusNonce, int deviceCounter, int numDevices, int maxParallel)
         {
-            var maxParallel = 3;//NonceList.Length
-            var combinedHeadersArray = new byte[maxParallel * 80];
-            for(var x = 0; x < maxParallel; x++)
-            {
-                var header = headerMinusNonce + Utility.ReverseEndian(Utility.BytesToHex(BitConverter.GetBytes(NonceList[x])));
-                var bytes = Utility.HexToBytes(header);
-                Buffer.BlockCopy(bytes, 0, combinedHeadersArray, x * 80, bytes.Length);
-            }
-            
-            var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D, 
-                ArrayView<uint>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>,
-                ArrayView<byte>>(GpuSha256.Kernel);
-            using var dK = accelerator.Allocate1D(K);
-            using var data = accelerator.Allocate1D(combinedHeadersArray);
-            using var secondData = accelerator.Allocate1D<byte>(maxParallel * 32);
-            using var thirdData = accelerator.Allocate1D<byte>(maxParallel * 32);
-            using var output = accelerator.Allocate1D<byte>(maxParallel * 32);
-            kernel(maxParallel, dK.View, data.View, secondData.View, thirdData.View, output.View);
+            var numNoncesToProcess = NonceList.Count() / numDevices;
+            var numLoops = numNoncesToProcess / maxParallel;
 
-            var hY = output.GetAsArray1D();
-            for (var x = 0; x < maxParallel; x++)
+            for (int i = 0; i < numLoops; i++)
             {
-                var start = x * 32;
-                var end = (x * 32) + 32;
-                var hash = Utility.ReverseEndian(BitConverter.ToString(hY[start..end]).Replace("-", "").ToLower());
-                if (hash.StartsWith("000000000000000000"))
+                var combinedHeadersArray = new byte[maxParallel * 80];
+                for (var x = 0; x < maxParallel; x++)
                 {
-                    ValidHeader = headerMinusNonce + Utility.ReverseEndian(Utility.BytesToHex(BitConverter.GetBytes(NonceList[x])));
-                    break;
+                    var header = headerMinusNonce + Utility.ReverseEndian(
+                        Utility.BytesToHex(
+                        BitConverter.GetBytes(NonceList[(i * maxParallel) + 
+                                            (deviceCounter * numNoncesToProcess) + x]))
+                        );
+                    var bytes = Utility.HexToBytes(header);
+                    Buffer.BlockCopy(bytes, 0, combinedHeadersArray, x * 80, bytes.Length);
                 }
+
+                var kernel = accelerator.LoadAutoGroupedStreamKernel<Index1D,
+                    ArrayView<uint>, ArrayView<byte>, ArrayView<byte>, ArrayView<byte>,
+                    ArrayView<byte>>(GpuSha256.Kernel);
+                using var dK = accelerator.Allocate1D(K);
+                using var data = accelerator.Allocate1D(combinedHeadersArray);
+                using var secondData = accelerator.Allocate1D<byte>(maxParallel * 32);
+                using var thirdData = accelerator.Allocate1D<byte>(maxParallel * 32);
+                using var output = accelerator.Allocate1D<byte>(maxParallel * 32);
+                kernel(maxParallel, dK.View, data.View, secondData.View, thirdData.View, output.View);
+
+                var hY = output.GetAsArray1D();
+                for (var x = 0; x < maxParallel; x++)
+                {
+                    var start = x * 32;
+                    var end = (x * 32) + 32;
+                    var hash = Utility.ReverseEndian(BitConverter.ToString(hY[start..end]).Replace("-", "").ToLower());
+                    if (hash.StartsWith("000000000000000000"))
+                    {
+                        ValidHeader = headerMinusNonce + Utility.ReverseEndian(Utility.BytesToHex(BitConverter.GetBytes(NonceList[x])));
+                        break;
+                    }
+                }
+                dK.Dispose();
+                data.Dispose();
+                secondData.Dispose();
+                thirdData.Dispose();
+                output.Dispose();
             }
 
             CompletedGpus++;

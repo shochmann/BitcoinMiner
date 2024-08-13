@@ -7,8 +7,8 @@ namespace BitcoinProcessor.Mining
 {
     public class Sha256Factory
     {
-        public static int LoopCounter = 1;
-        public static List<uint> NonceList;
+        public int LoopCounter = 1;
+        public List<uint> NonceList;
 
         private static readonly UInt32[] K = new UInt32[64] {
             0x428A2F98, 0x71374491, 0xB5C0FBCF, 0xE9B5DBA5, 0x3956C25B, 0x59F111F1, 0x923F82A4, 0xAB1C5ED5,
@@ -21,38 +21,38 @@ namespace BitcoinProcessor.Mining
             0x748F82EE, 0x78A5636F, 0x84C87814, 0x8CC70208, 0x90BEFFFA, 0xA4506CEB, 0xBEF9A3F7, 0xC67178F2
         };
 
-        private static UInt32 ROTR(UInt32 x, byte n)
+        private UInt32 ROTR(UInt32 x, byte n)
         {
             Debug.Assert(n < 32);
             return (x >> n) | (x << (32 - n));
         }
 
-        private static UInt32 Ch(UInt32 x, UInt32 y, UInt32 z)
+        private UInt32 Ch(UInt32 x, UInt32 y, UInt32 z)
         {
             return (x & y) ^ ((~x) & z);
         }
 
-        private static UInt32 Maj(UInt32 x, UInt32 y, UInt32 z)
+        private UInt32 Maj(UInt32 x, UInt32 y, UInt32 z)
         {
             return (x & y) ^ (x & z) ^ (y & z);
         }
 
-        private static UInt32 Sigma0(UInt32 x)
+        private UInt32 Sigma0(UInt32 x)
         {
             return ROTR(x, 2) ^ ROTR(x, 13) ^ ROTR(x, 22);
         }
 
-        private static UInt32 Sigma1(UInt32 x)
+        private UInt32 Sigma1(UInt32 x)
         {
             return ROTR(x, 6) ^ ROTR(x, 11) ^ ROTR(x, 25);
         }
 
-        private static UInt32 sigma0(UInt32 x)
+        private UInt32 sigma0(UInt32 x)
         {
             return ROTR(x, 7) ^ ROTR(x, 18) ^ (x >> 3);
         }
 
-        private static UInt32 sigma1(UInt32 x)
+        private UInt32 sigma1(UInt32 x)
         {
             return ROTR(x, 17) ^ ROTR(x, 19) ^ (x >> 10);
         }
@@ -103,22 +103,23 @@ namespace BitcoinProcessor.Mining
                 {
                     for (var y = 2; y < 3; y++)//num zeros added
                     {
-                        Sha256Factory2.EList = new List<long>();
+                        var factory2 = new Sha256Factory2();
+                        factory2.EList = new List<long>();
                         for (var x = 0; x < 256; x++)
                         {
                             for (int i = 0; i < (17 + y); i++)
                             {
                                 var headerToTry = header.Substring(i, 152 - i);
                                 headerToTry = new string('0', y) + Utility.BytesToHex(BitConverter.GetBytes(x)).Substring(0, 2) + headerToTry;
-                                var bytes = Sha256Factory2.HashFile(Sha256Factory2.HashFile(Utility.HexToBytes(headerToTry)));
+                                var bytes = factory2.HashFile(factory2.HashFile(Utility.HexToBytes(headerToTry)));
                             }
                         }
-                        foreach (var eItem in Sha256Factory2.EList)
+                        foreach (var eItem in factory2.EList)
                         {
                             var nonce = eItem - (h + Sigma1(e) + Ch(e, f, g) + K[t] + d);
                             NonceList.Add((uint)nonce);
                         }
-                        Sha256Factory2.EList = null;
+                        factory2.EList = null;
                     }
                 }
 
@@ -224,7 +225,7 @@ namespace BitcoinProcessor.Mining
             return Array.AsReadOnly(H);
         }
 
-        private static void toUintArray(byte[] src, UInt32[] dest)
+        private void toUintArray(byte[] src, UInt32[] dest)
         {
             for (uint i = 0, j = 0; i < dest.Length; ++i, j += 4)
             {
@@ -232,7 +233,7 @@ namespace BitcoinProcessor.Mining
             }
         }
 
-        private static byte[] toByteArray(ReadOnlyCollection<UInt32> src)
+        private byte[] toByteArray(ReadOnlyCollection<UInt32> src)
         {
             byte[] dest = new byte[src.Count * 4];
             int pos = 0;
@@ -248,7 +249,7 @@ namespace BitcoinProcessor.Mining
             return dest;
         }
 
-        public static byte[] HashFile(byte[] array, string header)
+        public byte[] HashFile(byte[] array, string header)
         {
             Sha256Factory sha = new Sha256Factory();
             sha.AddData(array, 0, (uint)array.Length, header);

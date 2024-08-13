@@ -1,9 +1,5 @@
 ﻿using ILGPU;
 using ILGPU.Runtime;
-using ILGPU.Runtime.OpenCL;
-using System.Reflection.PortableExecutable;
-using System.Text;
-using System.Security.Cryptography;
 
 namespace BitcoinProcessor.GPU
 {
@@ -11,7 +7,6 @@ namespace BitcoinProcessor.GPU
     {
         public static string ValidHeader { get; set; }
         public static int CompletedGpus { get; set; }
-        public static uint[] NonceList { get; set; }
 
         /**************************** VARIABLES *****************************/
         static readonly uint[] K =
@@ -184,21 +179,17 @@ namespace BitcoinProcessor.GPU
         }
 
         public static void ProcessGpuSha256(Accelerator accelerator, 
-            string headerMinusNonce, int deviceCounter, int numDevices, int maxParallel)
+            List<string> headers, int deviceCounter, int numDevices, int maxParallel)
         {
-            var numNoncesToProcess = NonceList.Count() / numDevices;
-            var numLoops = numNoncesToProcess / maxParallel;
+            var numHeadersPerDevice = headers.Count() / numDevices;
+            var numLoops = numHeadersPerDevice / maxParallel;
 
             for (int i = 0; i < numLoops; i++)
             {
                 var combinedHeadersArray = new byte[maxParallel * 80];
                 for (var x = 0; x < maxParallel; x++)
                 {
-                    var header = headerMinusNonce + Utility.ReverseEndian(
-                        Utility.BytesToHex(
-                        BitConverter.GetBytes(NonceList[(i * maxParallel) + 
-                                            (deviceCounter * numNoncesToProcess) + x]))
-                        );
+                    var header = headers[(i * maxParallel) + (deviceCounter * numHeadersPerDevice) + x];
                     var bytes = Utility.HexToBytes(header);
                     Buffer.BlockCopy(bytes, 0, combinedHeadersArray, x * 80, bytes.Length);
                 }
@@ -221,7 +212,7 @@ namespace BitcoinProcessor.GPU
                     var hash = Utility.ReverseEndian(BitConverter.ToString(hY[start..end]).Replace("-", "").ToLower());
                     if (hash.StartsWith("000000000000000000"))
                     {
-                        ValidHeader = headerMinusNonce + Utility.ReverseEndian(Utility.BytesToHex(BitConverter.GetBytes(NonceList[x])));
+                        ValidHeader = headers[x];
                         break;
                     }
                 }
